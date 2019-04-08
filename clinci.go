@@ -6,12 +6,18 @@ type Dispatcher interface {
 	Dispatch(pub Publishable) error
 }
 
-type Routing interface {
-	Key() string
+type Event interface {
+	Declarable
+	Kind() string
 }
 
 type Declarable interface {
+	Name() string
 	Config() *Config
+}
+
+type Routing interface {
+	Key() string
 }
 
 type Config struct {

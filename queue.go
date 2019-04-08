@@ -6,6 +6,5 @@ type Queueable interface {
 
 type Queuer interface {
 	SetName(name string)
-	GetName() string
 	Declarable
 }
