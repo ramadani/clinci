@@ -2,13 +2,33 @@ package clinci
 
 import "github.com/streadway/amqp"
 
+type Event interface {
+	Declarable
+	Kind() string
+}
+
 type Dispatcher interface {
 	Dispatch(pub Publishable) error
 }
 
-type Event interface {
+type Publishable interface {
+	Name() string
+	Data() ([]byte, error)
+	Routing
+}
+
+type Subscribable interface {
+	Routing
+	Handle(data []byte) error
+}
+
+type Queueable interface {
+	Queuer() Queuer
+}
+
+type Queuer interface {
+	SetName(name string)
 	Declarable
-	Kind() string
 }
 
 type Declarable interface {
