@@ -17,16 +17,7 @@ type Publishable interface {
 	Routing
 }
 
-type Subscribable interface {
-	Routing
-	Handle(data []byte) error
-}
-
-type Queueable interface {
-	Queuer() Queuer
-}
-
-type Queuer interface {
+type Queue interface {
 	SetName(name string)
 	Declarable
 }
@@ -34,6 +25,11 @@ type Queuer interface {
 type Declarable interface {
 	Name() string
 	Config() *Config
+}
+
+type Task interface {
+	Routing
+	Handle(data []byte) error
 }
 
 type Routing interface {
