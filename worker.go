@@ -5,8 +5,8 @@ import (
 )
 
 type Worker interface {
-	Declare(eventTask EventTask) error
-	DeclareAll(eventTasks []EventTask) error
+	Declare(eventTask *EventTask) error
+	DeclareAll(eventTasks []*EventTask) error
 }
 
 type EventTask struct {
@@ -19,7 +19,37 @@ type rabbitmqWorker struct {
 	ch *amqp.Channel
 }
 
-func (w *rabbitmqWorker) Declare(eventTask EventTask) error {
+type defaultQueue struct {
+	name string
+}
+
+func DefaultQueue() Queue {
+	return &defaultQueue{}
+}
+
+func NewWorker(ch *amqp.Channel) *rabbitmqWorker {
+	return &rabbitmqWorker{ch}
+}
+
+func (q *defaultQueue) SetName(name string) {
+	q.name = name
+}
+
+func (q *defaultQueue) Name() string {
+	return q.name
+}
+
+func (q *defaultQueue) Config() *Config {
+	return &Config{
+		Durable:    false,
+		AutoDelete: false,
+		Exclusive:  true,
+		NoWait:     false,
+		Args:       nil,
+	}
+}
+
+func (w *rabbitmqWorker) Declare(eventTask *EventTask) error {
 	// Declaring the Exchange
 	event := eventTask.Event
 	eCog := event.Config()
@@ -42,8 +72,14 @@ func (w *rabbitmqWorker) Declare(eventTask EventTask) error {
 	queue := eventTask.Queue
 	qCog := queue.Config()
 
-	q, err := w.ch.QueueDeclare("", qCog.Durable, qCog.AutoDelete, qCog.Exclusive,
-		qCog.NoWait, qCog.Args)
+	q, err := w.ch.QueueDeclare(
+		"",
+		qCog.Durable,
+		qCog.AutoDelete,
+		qCog.Exclusive,
+		qCog.NoWait,
+		qCog.Args,
+	)
 
 	if err != nil {
 		return err
@@ -63,7 +99,7 @@ func (w *rabbitmqWorker) Declare(eventTask EventTask) error {
 	return nil
 }
 
-func (w *rabbitmqWorker) DeclareAll(eventTasks []EventTask) error {
+func (w *rabbitmqWorker) DeclareAll(eventTasks []*EventTask) error {
 	for _, eventTask := range eventTasks {
 		if err := w.Declare(eventTask); err != nil {
 			return err
