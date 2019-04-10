@@ -7,14 +7,14 @@ type Dispatcher interface {
 }
 
 type Event interface {
-	Declarable
+	Configurable
 	Kind() string
 }
 
 type Listener interface {
-	Queuer() Queuer
-	Routing
 	Task
+	Queuer() Queuer
+	Consumer() Consumer
 }
 
 type Publishable interface {
@@ -25,15 +25,20 @@ type Publishable interface {
 
 type Queuer interface {
 	SetName(name string)
-	Declarable
+	Configurable
 }
 
-type Declarable interface {
+type Consumer interface {
+	Configurable
+}
+
+type Configurable interface {
 	Name() string
 	Config() *Config
 }
 
 type Task interface {
+	Routing
 	Handle(data []byte) error
 }
 
@@ -44,32 +49,9 @@ type Routing interface {
 type Config struct {
 	Durable    bool
 	AutoDelete bool
+	AutoAck    bool
 	Internal   bool
+	NoLocal    bool
 	NoWait     bool
 	Args       amqp.Table
-}
-
-type defaultQueuer struct {
-	name string
-}
-
-func DefaultQueuer() Queuer {
-	return &defaultQueuer{}
-}
-
-func (q *defaultQueuer) SetName(name string) {
-	q.name = name
-}
-
-func (q *defaultQueuer) Name() string {
-	return q.name
-}
-
-func (q *defaultQueuer) Config() *Config {
-	return &Config{
-		Durable:    false,
-		AutoDelete: false,
-		NoWait:     false,
-		Args:       nil,
-	}
 }
