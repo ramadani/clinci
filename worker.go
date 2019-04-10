@@ -92,14 +92,16 @@ func (w *rabbitmqWorker) Listen() (<-chan bool, error) {
 
 	for _, el := range w.eventListeners {
 		for _, lis := range el.Listeners {
+			consCog := lis.Consumer().Config()
+
 			msgs, err := w.ch.Consume(
 				lis.Queuer().Name(),
-				"",
-				true,
+				lis.Consumer().Name(),
+				consCog.AutoAck,
 				false,
-				false,
-				false,
-				nil,
+				consCog.NoLocal,
+				consCog.NoWait,
+				consCog.Args,
 			)
 
 			if err != nil {
