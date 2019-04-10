@@ -5,53 +5,30 @@ import (
 )
 
 type Worker interface {
-	Declare(eventTask *EventTask) error
-	DeclareAll(eventTasks []*EventTask) error
+	Declare(el *EventListener) error
+	DeclareAll(eventListeners []*EventListener) error
+	Listen() error
 }
 
-type EventTask struct {
-	Event Event
-	Queue Queue
-	Tasks []Task
+type EventListener struct {
+	Event     Event
+	Listeners []Listener
 }
 
 type rabbitmqWorker struct {
-	ch *amqp.Channel
-}
-
-type defaultQueue struct {
-	name string
-}
-
-func DefaultQueue() Queue {
-	return &defaultQueue{}
+	ch             *amqp.Channel
+	eventListeners []*EventListener
 }
 
 func NewWorker(ch *amqp.Channel) *rabbitmqWorker {
-	return &rabbitmqWorker{ch}
+	eventListeners := make([]*EventListener, 0)
+
+	return &rabbitmqWorker{ch, eventListeners}
 }
 
-func (q *defaultQueue) SetName(name string) {
-	q.name = name
-}
-
-func (q *defaultQueue) Name() string {
-	return q.name
-}
-
-func (q *defaultQueue) Config() *Config {
-	return &Config{
-		Durable:    false,
-		AutoDelete: false,
-		Exclusive:  true,
-		NoWait:     false,
-		Args:       nil,
-	}
-}
-
-func (w *rabbitmqWorker) Declare(eventTask *EventTask) error {
+func (w *rabbitmqWorker) Declare(el *EventListener) error {
 	// Declaring the Exchange
-	event := eventTask.Event
+	event := el.Event
 	eCog := event.Config()
 
 	err := w.ch.ExchangeDeclare(
@@ -68,30 +45,41 @@ func (w *rabbitmqWorker) Declare(eventTask *EventTask) error {
 		return err
 	}
 
-	// Declaring the Queue
-	queue := eventTask.Queue
-	qCog := queue.Config()
+	for _, lis := range el.Listeners {
+		queuer := lis.Queuer()
+		qCog := queuer.Config()
 
-	q, err := w.ch.QueueDeclare(
-		"",
-		qCog.Durable,
-		qCog.AutoDelete,
-		qCog.Exclusive,
-		qCog.NoWait,
-		qCog.Args,
-	)
+		// Declaring the Queue
+		q, err := w.ch.QueueDeclare(
+			"",
+			qCog.Durable,
+			qCog.AutoDelete,
+			true,
+			qCog.NoWait,
+			qCog.Args,
+		)
 
-	if err != nil {
-		return err
+		if err != nil {
+			return err
+		}
+
+		queuer.SetName(q.Name)
+
+		// Binding the Queue
+		err = w.ch.QueueBind(queuer.Name(), lis.Key(), event.Name(), qCog.NoWait, qCog.Args)
+		if err != nil {
+			return err
+		}
 	}
 
-	queue.SetName(q.Name)
+	w.push(el)
 
-	// Binding the Queue
-	tasks := eventTask.Tasks
-	for _, task := range tasks {
-		err = w.ch.QueueBind(queue.Name(), task.Key(), event.Name(), qCog.NoWait, qCog.Args)
-		if err != nil {
+	return nil
+}
+
+func (w *rabbitmqWorker) DeclareAll(eventListeners []*EventListener) error {
+	for _, el := range eventListeners {
+		if err := w.Declare(el); err != nil {
 			return err
 		}
 	}
@@ -99,12 +87,38 @@ func (w *rabbitmqWorker) Declare(eventTask *EventTask) error {
 	return nil
 }
 
-func (w *rabbitmqWorker) DeclareAll(eventTasks []*EventTask) error {
-	for _, eventTask := range eventTasks {
-		if err := w.Declare(eventTask); err != nil {
-			return err
+func (w *rabbitmqWorker) Listen() (<-chan bool, error) {
+	listen := make(chan bool)
+
+	for _, el := range w.eventListeners {
+		for _, lis := range el.Listeners {
+			msgs, err := w.ch.Consume(
+				lis.Queuer().Name(),
+				"",
+				true,
+				false,
+				false,
+				false,
+				nil,
+			)
+
+			if err != nil {
+				return listen, err
+			}
+
+			go w.consume(msgs, lis)
 		}
 	}
 
-	return nil
+	return listen, nil
+}
+
+func (w *rabbitmqWorker) push(el *EventListener) {
+	w.eventListeners = append(w.eventListeners, el)
+}
+
+func (w *rabbitmqWorker) consume(msgs <-chan amqp.Delivery, task Task) {
+	for d := range msgs {
+		task.Handle(d.Body)
+	}
 }
