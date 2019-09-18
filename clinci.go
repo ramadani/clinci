@@ -2,10 +2,12 @@ package clinci
 
 import "github.com/streadway/amqp"
 
+// Dispatcher for publisher
 type Dispatcher interface {
 	Dispatch(pub Publishable) error
 }
 
+// Event
 type Event interface {
 	Configurable
 	Kind() string
